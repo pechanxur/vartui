@@ -1,0 +1,6 @@
+/target
+.env
+debug.log
+*.json
+.DS_Store
+**/*.rs.bk
