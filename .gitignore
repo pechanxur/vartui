@@ -1,6 +1,5 @@
 /target
 .env
-debug.log
+*.log
 *.json
 .DS_Store
-**/*.rs.bk
