@@ -11,9 +11,10 @@ use ratatui::{
 };
 use chrono::{Datelike, Local};
 
-use crate::application::app::{App, InputMode};
+use crate::application::app::{App, AppFocus, InputMode};
 use crate::utils::parsing::parse_date;
 use crate::ui::components::entry_modal::render_add_entry_modal;
+use crate::ui::components::config_modal::render_config_modal;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
     let layout = Layout::default()
@@ -96,10 +97,16 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         })
         .collect();
 
-    let entries_list =
-        List::new(entry_items).block(Block::default().title(detail_title).borders(Borders::ALL));
+    let entries_list = List::new(entry_items)
+        .block(Block::default().title(detail_title).borders(Borders::ALL))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("» ");
 
-    frame.render_widget(entries_list, top[1]);
+    frame.render_stateful_widget(entries_list, top[1], &mut app.entry_state);
 
     let (actions_text, prompt_len) = if app.input_mode == InputMode::Editing {
         let prompt = "Rango (YYYY-MM-DD..YYYY-MM-DD): ";
@@ -109,13 +116,18 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         );
         (text, Some(prompt.len()))
     } else {
-        (
+        let actions = if app.focus == AppFocus::Entries {
             format!(
-                "j/k: mover | f: rango | r: refrescar | n: nuevo | q: salir |  {}",
+                "j/k: mover | h: volver | d: duplicar | q: salir |  {}",
                 app.status
-            ),
-            None,
-        )
+            )
+        } else {
+            format!(
+                "j/k: mover | l: entries | f: rango | r: refrescar | n: nuevo | c: config | q: salir |  {}",
+                app.status
+            )
+        };
+        (actions, None)
     };
 
     let actions_block = Block::default().title("Acciones").borders(Borders::ALL);
@@ -135,5 +147,9 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     if app.input_mode == InputMode::AddingEntry {
         render_add_entry_modal(frame, app);
+    }
+    
+    if app.input_mode == InputMode::Configuring {
+        render_config_modal(frame, app);
     }
 }

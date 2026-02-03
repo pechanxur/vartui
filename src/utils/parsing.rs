@@ -120,9 +120,34 @@ pub fn initial_date_range() -> crate::domain::models::DateRange {
 }
 
 pub fn parse_date_range(input: &str) -> Result<crate::domain::models::DateRange, String> {
+    use chrono::Datelike;
+    let now = chrono::Local::now().date_naive();
+    
+    // Handle special keywords
+    match input.trim().to_uppercase().as_str() {
+        "AUTO" | "AUTO-MONTH" | "MONTH" => {
+            let start = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap_or(now);
+            return Ok(crate::domain::models::DateRange {
+                start: start.format("%Y-%m-%d").to_string(),
+                end: now.format("%Y-%m-%d").to_string(),
+            });
+        }
+        "AUTO-WEEK" | "WEEK" => {
+            // Start of week (Monday)
+            let weekday = now.weekday().num_days_from_monday();
+            let start = now - chrono::Duration::days(weekday as i64);
+            return Ok(crate::domain::models::DateRange {
+                start: start.format("%Y-%m-%d").to_string(),
+                end: now.format("%Y-%m-%d").to_string(),
+            });
+        }
+        _ => {}
+    }
+    
+    // Standard format: YYYY-MM-DD..YYYY-MM-DD
     let parts: Vec<&str> = input.split("..").collect();
     if parts.len() != 2 {
-        return Err("Formato incorrecto. Use YYYY-MM-DD..YYYY-MM-DD".to_string());
+        return Err("Formato incorrecto. Use YYYY-MM-DD..YYYY-MM-DD, AUTO, AUTO-WEEK, o AUTO-MONTH".to_string());
     }
     let start_str = parts[0].trim();
     let end_str = parts[1].trim();

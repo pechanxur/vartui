@@ -17,7 +17,7 @@ pub fn render_add_entry_modal(frame: &mut Frame, app: &mut App) {
     let block = Block::default()
         .title("Nuevo Registro")
         .borders(Borders::ALL)
-        .style(Style::default().bg(Color::DarkGray));
+        .style(Style::default().bg(Color::Reset));
     frame.render_widget(block, area);
 
     let chunks = Layout::default()
@@ -34,7 +34,7 @@ pub fn render_add_entry_modal(frame: &mut Frame, app: &mut App) {
         .split(area);
         
     let style_focused = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
-    let style_normal = Style::default().fg(Color::White);
+    let style_normal = Style::default().fg(Color::Reset);
 
     // Dropdown configuration to be rendered after fields
     let mut dropdown_info = None;
@@ -56,7 +56,7 @@ pub fn render_add_entry_modal(frame: &mut Frame, app: &mut App) {
         render_field(frame, "Fecha (YYYY-MM-DD)", &form.date, FormField::Date, chunks[0]);
         render_field(frame, "Proyecto (Busca...)", &form.project_search, FormField::ProjectId, chunks[1]);
         render_field(frame, "Descripcion", &form.description, FormField::Description, chunks[2]);
-        render_field(frame, "Minutos", &form.minutes, FormField::Minutes, chunks[3]);
+        render_field(frame, "Duracion (HH:MM)", &form.minutes, FormField::Minutes, chunks[3]);
 
         // Billable
         let is_billable_focused = form.focused == FormField::Billable;
@@ -103,7 +103,7 @@ pub fn render_add_entry_modal(frame: &mut Frame, app: &mut App) {
             .collect();
             
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).style(Style::default().bg(Color::DarkGray)))
+            .block(Block::default().borders(Borders::ALL).style(Style::default().bg(Color::Reset)))
             .highlight_style(Style::default().bg(Color::Blue));
         
         frame.render_widget(Clear, dropdown_area);

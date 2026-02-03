@@ -8,7 +8,7 @@ use std::io;
 use std::time::Duration;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
-use crate::application::app::{App, InputMode};
+use crate::application::app::{App, AppFocus, InputMode};
 use crate::ui::tui::{setup_terminal, restore_terminal};
 use crate::ui::ui;
 
@@ -52,14 +52,41 @@ fn run_app(terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<i
                         KeyCode::Char(value) => app.form_input_push(value),
                         _ => {}
                     }
+                } else if app.input_mode == InputMode::Configuring {
+                    match key.code {
+                        KeyCode::Esc => app.close_config(),
+                        KeyCode::Tab => app.config_next_field(),
+                        KeyCode::Enter => app.save_config_form(),
+                        KeyCode::Backspace => app.config_backspace(),
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => app.config_clear_field(),
+                        KeyCode::Char(value) => app.config_input(value),
+                        _ => {}
+                    }
                 } else {
+                    // Normal mode - handle focus-dependent navigation
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Down | KeyCode::Char('j') => app.next_day(),
-                        KeyCode::Up | KeyCode::Char('k') => app.previous_day(),
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if app.focus == AppFocus::Entries {
+                                app.next_entry();
+                            } else {
+                                app.next_day();
+                            }
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            if app.focus == AppFocus::Entries {
+                                app.previous_entry();
+                            } else {
+                                app.previous_day();
+                            }
+                        }
+                        KeyCode::Char('l') => app.focus_entries(),
+                        KeyCode::Char('h') | KeyCode::Esc => app.focus_days(),
+                        KeyCode::Char('d') => app.open_duplicate_entry(),
                         KeyCode::Char('r') => app.refresh(),
                         KeyCode::Char('f') => app.start_input(),
                         KeyCode::Char('n') => app.open_add_entry(),
+                        KeyCode::Char('c') => app.open_config(),
                         _ => {}
                     }
                 }
