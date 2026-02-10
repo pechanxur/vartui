@@ -1,0 +1,437 @@
+name: ci-release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run tests
+        run: cargo test --locked --all-targets
+
+  version:
+    name: Calculate Next SemVer
+    runs-on: ubuntu-24.04
+    needs: test
+    outputs:
+      should_release: ${{ steps.semver.outputs.should_release }}
+      bump: ${{ steps.semver.outputs.bump }}
+      previous_tag: ${{ steps.semver.outputs.previous_tag }}
+      version: ${{ steps.semver.outputs.version }}
+      tag: ${{ steps.semver.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --force --tags
+
+      - name: Compute version from conventional commits
+        id: semver
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          out_file = os.environ["GITHUB_OUTPUT"]
+
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          def write_output(key, value):
+              with open(out_file, "a", encoding="utf-8") as fh:
+                  fh.write(f"{key}={value}\n")
+
+          tags_raw = git("tag", "--list", "v*", "--sort=-version:refname")
+          tags = [tag for tag in tags_raw.splitlines() if re.fullmatch(r"v\d+\.\d+\.\d+", tag)]
+          previous_tag = tags[0] if tags else ""
+
+          base_major, base_minor, base_patch = 0, 0, 0
+          rev_range = "HEAD"
+          if previous_tag:
+              base_major, base_minor, base_patch = map(int, previous_tag[1:].split("."))
+              rev_range = f"{previous_tag}..HEAD"
+
+          log_raw = subprocess.check_output(
+              ["git", "log", rev_range, "--no-merges", "--format=%s%n%b%n==END=="],
+              text=True,
+          )
+          commits = [chunk.strip() for chunk in log_raw.split("==END==") if chunk.strip()]
+
+          if not commits:
+              write_output("should_release", "false")
+              write_output("bump", "none")
+              write_output("previous_tag", previous_tag)
+              write_output("version", previous_tag[1:] if previous_tag else "0.0.0")
+              write_output("tag", previous_tag)
+              raise SystemExit(0)
+
+          bump = None
+          major_pattern = re.compile(r"^[A-Za-z]+(\([^)]+\))?!:")
+          minor_pattern = re.compile(r"^feat(\([^)]+\))?:")
+          patch_pattern = re.compile(r"^fix(\([^)]+\))?:")
+
+          for commit in commits:
+              lines = commit.splitlines()
+              subject = lines[0].strip() if lines else ""
+              body = "\n".join(lines[1:]) if len(lines) > 1 else ""
+              full = f"{subject}\n{body}"
+
+              if "BREAKING CHANGE" in full or major_pattern.match(subject):
+                  bump = "major"
+                  break
+
+              if minor_pattern.match(subject):
+                  bump = "minor"
+                  continue
+
+              if patch_pattern.match(subject) and bump is None:
+                  bump = "patch"
+
+          if bump is None:
+              write_output("should_release", "false")
+              write_output("bump", "none")
+              write_output("previous_tag", previous_tag)
+              write_output("version", previous_tag[1:] if previous_tag else "0.0.0")
+              write_output("tag", previous_tag)
+              raise SystemExit(0)
+
+          next_major, next_minor, next_patch = base_major, base_minor, base_patch
+          if bump == "major":
+              next_major += 1
+              next_minor = 0
+              next_patch = 0
+          elif bump == "minor":
+              next_minor += 1
+              next_patch = 0
+          else:
+              next_patch += 1
+
+          version = f"{next_major}.{next_minor}.{next_patch}"
+          tag = f"v{version}"
+
+          write_output("should_release", "true")
+          write_output("bump", bump)
+          write_output("previous_tag", previous_tag)
+          write_output("version", version)
+          write_output("tag", tag)
+          PY
+
+  build:
+    name: Build Binaries (${{ matrix.asset_suffix }})
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            asset_suffix: linux-x86_64
+            archive_ext: tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset_suffix: linux-arm64
+            archive_ext: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            asset_suffix: darwin-x86_64
+            archive_ext: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset_suffix: darwin-arm64
+            archive_ext: tar.gz
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            asset_suffix: windows-x86_64
+            archive_ext: zip
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            asset_suffix: windows-arm64
+            archive_ext: zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package unix artifact
+        if: runner.os != 'Windows'
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
+        run: |
+          set -euo pipefail
+          asset="vartui-${TAG}-${ASSET_SUFFIX}"
+          mkdir -p dist
+          cp "target/${TARGET}/release/vartui" dist/vartui
+          chmod +x dist/vartui
+          tar -C dist -czf "${asset}.tar.gz" vartui
+          shasum -a 256 "${asset}.tar.gz" | cut -d ' ' -f1 > "${asset}.sha256"
+
+      - name: Package windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
+        run: |
+          $asset = "vartui-$env:TAG-$env:ASSET_SUFFIX"
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item "target/$env:TARGET/release/vartui.exe" "dist/vartui.exe"
+          Compress-Archive -Path "dist/vartui.exe" -DestinationPath "$asset.zip" -Force
+          $hash = (Get-FileHash -Algorithm SHA256 "$asset.zip").Hash.ToLower()
+          Set-Content -Path "$asset.sha256" -Value $hash -NoNewline
+
+      - name: Upload artifact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: vartui-${{ needs.version.outputs.tag }}-${{ matrix.asset_suffix }}
+          path: |
+            vartui-${{ needs.version.outputs.tag }}-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
+            vartui-${{ needs.version.outputs.tag }}-${{ matrix.asset_suffix }}.sha256
+          if-no-files-found: error
+
+  release:
+    name: Create Tag and GitHub Release
+    runs-on: ubuntu-24.04
+    needs:
+      - version
+      - build
+    if: needs.version.outputs.should_release == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vartui-${{ needs.version.outputs.tag }}-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Build release notes
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+          BUMP: ${{ needs.version.outputs.bump }}
+          PREVIOUS_TAG: ${{ needs.version.outputs.previous_tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags
+
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          tag = os.environ["TAG"]
+          version = os.environ["VERSION"]
+          bump = os.environ["BUMP"]
+          previous_tag = os.environ.get("PREVIOUS_TAG", "").strip()
+          repo = os.environ["REPOSITORY"]
+
+          range_spec = f"{previous_tag}..HEAD" if previous_tag else "HEAD"
+          raw = subprocess.check_output(
+              [
+                  "git",
+                  "log",
+                  range_spec,
+                  "--no-merges",
+                  "--format=%H%x1f%s%x1f%b%x1e",
+              ],
+              text=True,
+          ).strip("\n\x1e")
+
+          records = [chunk for chunk in raw.split("\x1e") if chunk.strip()]
+
+          type_with_bang = re.compile(r"^[A-Za-z]+(\([^)]+\))?!:\s*(.+)$")
+          feat = re.compile(r"^feat(\([^)]+\))?:\s*(.+)$")
+          fix = re.compile(r"^fix(\([^)]+\))?:\s*(.+)$")
+
+          def normalize_subject(subject):
+              for pattern in (type_with_bang, feat, fix):
+                  match = pattern.match(subject)
+                  if match:
+                      return match.group(2).strip()
+              return subject.strip()
+
+          def commit_line(sha, subject):
+              message = normalize_subject(subject)
+              return f"- {message} ([`{sha[:7]}`](https://github.com/{repo}/commit/{sha}))"
+
+          breaking = []
+          features = []
+          fixes = []
+
+          for record in records:
+              parts = record.split("\x1f")
+              if len(parts) < 3:
+                  continue
+
+              sha = parts[0]
+              subject = parts[1].strip()
+              body = parts[2]
+              is_breaking = "BREAKING CHANGE" in body or bool(type_with_bang.match(subject))
+
+              if is_breaking:
+                  breaking.append(commit_line(sha, subject))
+              elif feat.match(subject):
+                  features.append(commit_line(sha, subject))
+              elif fix.match(subject):
+                  fixes.append(commit_line(sha, subject))
+
+          lines = [
+              f"Automated {bump} release for vartui.",
+              "",
+              f"- Version: {version}",
+              f"- Tag: {tag}",
+          ]
+
+          if previous_tag and previous_tag != tag:
+              lines.append(
+                  f"- Compare: https://github.com/{repo}/compare/{previous_tag}...{tag}"
+              )
+
+          lines.extend(["", "## Changelog"])
+
+          if breaking:
+              lines.extend(["", "### Breaking Changes", *breaking])
+          if features:
+              lines.extend(["", "### Features", *features])
+          if fixes:
+              lines.extend(["", "### Fixes", *fixes])
+
+          if not (breaking or features or fixes):
+              lines.extend(["", "- No user-facing changes found."])
+
+          with open("release-notes.md", "w", encoding="utf-8") as handle:
+              handle.write("\n".join(lines).rstrip() + "\n")
+          PY
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" release-assets/* --clobber
+            gh release edit "${TAG}" --title "${TAG}" --notes-file release-notes.md
+          else
+            gh release create "${TAG}" release-assets/* \
+              --title "${TAG}" \
+              --notes-file release-notes.md \
+              --target "${GITHUB_SHA}"
+          fi
+
+  homebrew:
+    name: Update Homebrew Tap Formula
+    runs-on: ubuntu-24.04
+    needs:
+      - version
+      - release
+    if: needs.version.outputs.should_release == 'true' && secrets.HOMEBREW_TAP_TOKEN != ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download macOS checksum assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh release download "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --pattern "vartui-${TAG}-darwin-arm64.sha256" \
+            --pattern "vartui-${TAG}-darwin-x86_64.sha256" \
+            --dir release-assets
+
+      - name: Read checksums
+        id: shas
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sha_arm64="$(tr -d '\n\r ' < "release-assets/vartui-${TAG}-darwin-arm64.sha256")"
+          sha_x86_64="$(tr -d '\n\r ' < "release-assets/vartui-${TAG}-darwin-x86_64.sha256")"
+          echo "sha_arm64=${sha_arm64}" >> "$GITHUB_OUTPUT"
+          echo "sha_x86_64=${sha_x86_64}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone tap repository
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/pechanxur/homebrew-vartui.git" tap-repo
+
+      - name: Generate formula
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          SHA_ARM64: ${{ steps.shas.outputs.sha_arm64 }}
+          SHA_X86_64: ${{ steps.shas.outputs.sha_x86_64 }}
+        run: |
+          set -euo pipefail
+          ./scripts/homebrew/generate-formula.sh \
+            --owner pechanxur \
+            --repo vartui \
+            --tag "${TAG}" \
+            --sha-arm64 "${SHA_ARM64}" \
+            --sha-x86_64 "${SHA_X86_64}" \
+            --output "tap-repo/Formula/vartui.rb"
+
+      - name: Commit and push formula update
+        working-directory: tap-repo
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Formula/vartui.rb; then
+            echo "No formula changes"
+            exit 0
+          fi
+
+          git add Formula/vartui.rb
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "chore(homebrew): update formula for ${TAG}"
+          git push

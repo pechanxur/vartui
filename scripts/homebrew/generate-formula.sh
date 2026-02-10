@@ -8,26 +8,26 @@ Generate a Homebrew formula for prebuilt vartui binaries.
 
 Usage:
   scripts/homebrew/generate-formula.sh \
-    --project-path <group/repo> \
+    --owner <github-owner> \
+    --repo <github-repo> \
     --tag <release-tag> \
     --sha-arm64 <sha256> \
     --sha-x86_64 <sha256> \
-    [--gitlab-host <host>] \
     [--output <path>]
 
 Example:
   scripts/homebrew/generate-formula.sh \
-    --project-path dsanchezp.e/varTui \
+    --owner dsanchezp \
+    --repo vartui \
     --tag v0.1.0 \
     --sha-arm64 abc123... \
     --sha-x86_64 def456... \
-    --gitlab-host gitlab.example.com \
     --output Formula/vartui.rb
 EOF
 }
 
-gitlab_host="${CI_SERVER_HOST:-gitlab.com}"
-project_path=""
+owner=""
+repo=""
 tag=""
 sha_arm64=""
 sha_x86_64=""
@@ -35,8 +35,12 @@ output=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --project-path)
-      project_path="${2:-}"
+    --owner)
+      owner="${2:-}"
+      shift 2
+      ;;
+    --repo)
+      repo="${2:-}"
       shift 2
       ;;
     --tag)
@@ -49,10 +53,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --sha-x86_64)
       sha_x86_64="${2:-}"
-      shift 2
-      ;;
-    --gitlab-host)
-      gitlab_host="${2:-}"
       shift 2
       ;;
     --output)
@@ -71,18 +71,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$project_path" || -z "$tag" || -z "$sha_arm64" || -z "$sha_x86_64" ]]; then
+if [[ -z "$owner" || -z "$repo" || -z "$tag" || -z "$sha_arm64" || -z "$sha_x86_64" ]]; then
   echo "Missing required arguments." >&2
   usage >&2
   exit 1
 fi
 
 version="${tag#v}"
-url_base="https://${gitlab_host}/${project_path}/-/releases/${tag}/downloads"
+url_base="https://github.com/${owner}/${repo}/releases/download/${tag}"
 
 formula_content="class Vartui < Formula
   desc \"Terminal timesheet TUI and JSON CLI for VAR\"
-  homepage \"https://${gitlab_host}/${project_path}\"
+  homepage \"https://github.com/${owner}/${repo}\"
   version \"${version}\"
 
   on_macos do
