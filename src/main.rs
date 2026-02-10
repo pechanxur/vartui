@@ -97,6 +97,9 @@ fn run_app(
                         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             app.config_clear_field()
                         }
+                        KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.config_reset_defaults()
+                        }
                         KeyCode::Char(value) => app.config_input(value),
                         _ => {}
                     }

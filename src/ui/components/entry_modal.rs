@@ -1,8 +1,8 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
-    Frame,
 };
 
 use crate::application::app::{App, FormField};
@@ -162,18 +162,18 @@ pub fn render_add_entry_modal(frame: &mut Frame, app: &mut App) {
             .alignment(ratatui::layout::Alignment::Center),
         chunks[4],
     ); // wait, chunk 4 is used for Billable. The help text should be below.
-       // Chunk 5 is min(0), let's render help there if possible or overlay?
-       // In original code, help text was overwriting or appending?
-       // Original:
-       // chunks[4] was "Constraint::Min(0)".
-       // Ah, I added "Billable" as new constraint in previous steps in main.rs but here I might have copied logic
-       // Let's check constraints in this file:
-       //     Constraint::Length(3), // Date
-       //     Constraint::Length(3), // Project ID
-       //     Constraint::Length(3), // Description
-       //     Constraint::Length(3), // Minutes
-       //     Constraint::Length(3), // Billable
-       //     Constraint::Min(0),    // Space
+    // Chunk 5 is min(0), let's render help there if possible or overlay?
+    // In original code, help text was overwriting or appending?
+    // Original:
+    // chunks[4] was "Constraint::Min(0)".
+    // Ah, I added "Billable" as new constraint in previous steps in main.rs but here I might have copied logic
+    // Let's check constraints in this file:
+    //     Constraint::Length(3), // Date
+    //     Constraint::Length(3), // Project ID
+    //     Constraint::Length(3), // Description
+    //     Constraint::Length(3), // Minutes
+    //     Constraint::Length(3), // Billable
+    //     Constraint::Min(0),    // Space
 
     // So Billable is at index 4. The help text should be at index 5.
 

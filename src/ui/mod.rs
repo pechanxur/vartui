@@ -4,11 +4,11 @@ pub mod tui;
 
 use chrono::{Datelike, Local};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
-    Frame,
 };
 
 use crate::application::app::{App, AppFocus, InputMode};

@@ -42,6 +42,7 @@ cargo run --
 - `Enter`: confirmar/seleccionar/guardar
 - `Esc`: cancelar/cerrar modal
 - `Ctrl+u` (config): limpiar campo actual
+- `Ctrl+r` (config): restablecer configuracion
 
 ## Formatos de rango
 

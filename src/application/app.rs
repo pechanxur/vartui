@@ -155,20 +155,37 @@ impl App {
         }
 
         let days = build_empty_days(&date_range);
-        let rx = spawn_load_projects(&config);
-        let rx_load = spawn_load(date_range.clone(), &config);
+        let has_token = config_has_token(&config);
+
+        let status = if has_token {
+            "cargando...".to_string()
+        } else {
+            "No hay token configurado. Completa la configuracion para empezar.".to_string()
+        };
+
+        let rx_projects = if has_token {
+            Some(spawn_load_projects(&config))
+        } else {
+            None
+        };
+
+        let rx_load = if has_token {
+            Some(spawn_load(date_range.clone(), &config))
+        } else {
+            None
+        };
 
         let mut app = Self {
             days,
             day_state: ListState::default(),
             entry_state: ListState::default(),
             focus: AppFocus::Days,
-            status: "cargando...".to_string(),
+            status,
             date_range,
             input_mode: InputMode::Normal,
             input: String::new(),
-            rx: Some(rx_load),
-            rx_projects: Some(rx),
+            rx: rx_load,
+            rx_projects,
             entry_form: None,
             projects: Vec::new(),
             config,
@@ -178,6 +195,13 @@ impl App {
         if !app.days.is_empty() {
             app.day_state.select(Some(0));
         }
+
+        if !has_token {
+            app.open_config();
+            app.status =
+                "No hay token configurado. Ingresa VAR Token y presiona Enter.".to_string();
+        }
+
         app
     }
 
@@ -313,8 +337,21 @@ impl App {
     }
 
     pub fn refresh(&mut self) {
+        if !config_has_token(&self.config) {
+            self.rx = None;
+            self.rx_projects = None;
+            self.open_config();
+            self.status =
+                "No hay token configurado. Ingresa VAR Token y presiona Enter.".to_string();
+            return;
+        }
+
         self.status = "actualizando...".to_string();
         self.rx = Some(spawn_load(self.date_range.clone(), &self.config));
+
+        if self.projects.is_empty() {
+            self.rx_projects = Some(spawn_load_projects(&self.config));
+        }
     }
 
     pub fn start_input(&mut self) {
@@ -579,19 +616,15 @@ impl App {
 
         self.status = "creando registro...".to_string();
 
-        let token = env::var("VAR_TOKEN")
-            .unwrap_or_default()
-            .replace('"', "")
-            .trim()
-            .to_string();
-        let mut base_url = env::var("VAR_BASE_URL")
-            .ok()
-            .map(|v| v.replace('"', "").trim().to_string())
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| API_BASE.to_string());
-        if base_url.ends_with('/') {
-            base_url.pop();
+        let token = resolve_token(&self.config);
+        if token.is_empty() {
+            self.open_config();
+            self.status =
+                "No hay token configurado. Ingresa VAR Token y presiona Enter.".to_string();
+            return;
         }
+
+        let base_url = resolve_base_url(&self.config);
 
         let client = match ApiClient::new(base_url, token) {
             Ok(c) => c,
@@ -616,8 +649,8 @@ impl App {
     // Config Modal Methods
     pub fn open_config(&mut self) {
         self.config_form = Some(ConfigForm {
-            token: self.get_effective_token(),
-            base_url: self.get_effective_base_url(),
+            token: self.config.var_token.clone(),
+            base_url: self.config.base_url.clone(),
             default_range: self.config.default_date_range.clone().unwrap_or_default(),
             focused: ConfigField::Token,
         });
@@ -714,48 +747,48 @@ impl App {
         }
     }
 
-    // Helpers to resolve Env vs Config
-    pub fn get_effective_token(&self) -> String {
-        if !self.config.var_token.is_empty() {
-            self.config.var_token.clone()
-        } else {
-            env::var("VAR_TOKEN")
-                .unwrap_or_default()
-                .replace('"', "")
-                .trim()
-                .to_string()
-        }
-    }
+    pub fn config_reset_defaults(&mut self) {
+        let default_config = AppConfig::default();
 
-    pub fn get_effective_base_url(&self) -> String {
-        if !self.config.base_url.is_empty() && self.config.base_url != "https://var.elaniin.com/api"
-        {
-            self.config.base_url.clone()
-        } else {
-            env::var("VAR_BASE_URL")
-                .ok()
-                .map(|v| v.replace('"', "").trim().to_string())
-                .filter(|v| !v.is_empty())
-                .unwrap_or_else(|| API_BASE.to_string())
+        match save_config(&default_config) {
+            Ok(_) => {
+                self.config = default_config;
+
+                if let Some(form) = &mut self.config_form {
+                    form.token.clear();
+                    form.base_url = self.config.base_url.clone();
+                    form.default_range.clear();
+                    form.focused = ConfigField::Token;
+                }
+
+                self.date_range = initial_date_range();
+                self.set_days(build_empty_days(&self.date_range));
+                self.status = "Configuracion restablecida".to_string();
+                self.refresh();
+            }
+            Err(e) => {
+                self.status = format!("Error restableciendo: {}", e);
+            }
         }
     }
 }
 
-// Background Task functions
-pub fn spawn_load(range: DateRange, config: &AppConfig) -> Receiver<BackgroundResult> {
-    let (tx, rx) = mpsc::channel();
-    let token = if !config.var_token.is_empty() {
-        config.var_token.clone()
+fn resolve_token(config: &AppConfig) -> String {
+    if !config.var_token.is_empty() {
+        config.var_token.trim().to_string()
     } else {
         env::var("VAR_TOKEN")
             .unwrap_or_default()
             .replace('"', "")
             .trim()
             .to_string()
-    };
+    }
+}
+
+fn resolve_base_url(config: &AppConfig) -> String {
     let mut base_url =
         if !config.base_url.is_empty() && config.base_url != "https://var.elaniin.com/api" {
-            config.base_url.clone()
+            config.base_url.trim().to_string()
         } else {
             env::var("VAR_BASE_URL")
                 .ok()
@@ -763,9 +796,31 @@ pub fn spawn_load(range: DateRange, config: &AppConfig) -> Receiver<BackgroundRe
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| API_BASE.to_string())
         };
+
     if base_url.ends_with('/') {
         base_url.pop();
     }
+
+    base_url
+}
+
+fn config_has_token(config: &AppConfig) -> bool {
+    !resolve_token(config).is_empty()
+}
+
+// Background Task functions
+pub fn spawn_load(range: DateRange, config: &AppConfig) -> Receiver<BackgroundResult> {
+    let (tx, rx) = mpsc::channel();
+    let token = resolve_token(config);
+    if token.is_empty() {
+        let _ = tx.send(BackgroundResult {
+            days: Vec::new(),
+            status: "No hay token configurado. Presiona c para configurar.".to_string(),
+        });
+        return rx;
+    }
+
+    let base_url = resolve_base_url(config);
 
     thread::spawn(move || {
         let result = match ApiClient::new(base_url, token) {
@@ -794,28 +849,15 @@ pub fn spawn_load(range: DateRange, config: &AppConfig) -> Receiver<BackgroundRe
 
 pub fn spawn_load_projects(config: &AppConfig) -> Receiver<Result<Vec<Project>, String>> {
     let (tx, rx) = mpsc::channel();
-    let token = if !config.var_token.is_empty() {
-        config.var_token.clone()
-    } else {
-        env::var("VAR_TOKEN")
-            .unwrap_or_default()
-            .replace('"', "")
-            .trim()
-            .to_string()
-    };
-    let mut base_url =
-        if !config.base_url.is_empty() && config.base_url != "https://var.elaniin.com/api" {
-            config.base_url.clone()
-        } else {
-            env::var("VAR_BASE_URL")
-                .ok()
-                .map(|v| v.replace('"', "").trim().to_string())
-                .filter(|v| !v.is_empty())
-                .unwrap_or_else(|| API_BASE.to_string())
-        };
-    if base_url.ends_with('/') {
-        base_url.pop();
+    let token = resolve_token(config);
+    if token.is_empty() {
+        let _ = tx.send(Err(
+            "No hay token configurado. Presiona c para configurar.".to_string()
+        ));
+        return rx;
     }
+
+    let base_url = resolve_base_url(config);
 
     thread::spawn(move || {
         let result = match ApiClient::new(base_url, token) {

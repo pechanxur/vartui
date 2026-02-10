@@ -1,8 +1,8 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear, Paragraph},
-    Frame,
 };
 
 use crate::application::app::{App, ConfigField};
@@ -92,9 +92,14 @@ pub fn render_config_modal(frame: &mut Frame, app: &mut App) {
     // Help with format examples
     let help_text = format!(
         "Formatos: AUTO | AUTO-WEEK | AUTO-MONTH | YYYY-MM-DD..YYYY-MM-DD\n\
-         Ejemplos: AUTO (mes actual), AUTO-WEEK (semana actual)\n\n\
-         Tab: siguiente | Ctrl+U: limpiar | Enter: guardar | Esc: cancelar{}",
-        if app.status.contains("Error") || app.status.contains("guardada") {
+         Ejemplos: AUTO (mes actual), AUTO-WEEK (semana actual)\n\
+         Nota: VAR_TOKEN/VAR_BASE_URL del entorno tienen prioridad.\n\n\
+         Tab: siguiente | Ctrl+U: limpiar campo | Ctrl+R: restablecer | Enter: guardar | Esc: cancelar{}",
+        if app.status.contains("Error")
+            || app.status.contains("guardada")
+            || app.status.contains("restablecida")
+            || app.status.contains("No hay token")
+        {
             format!("\n{}", app.status)
         } else {
             String::new()
