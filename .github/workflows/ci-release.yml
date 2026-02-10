@@ -367,13 +367,27 @@ jobs:
     needs:
       - version
       - release
-    if: needs.version.outputs.should_release == 'true' && secrets.HOMEBREW_TAP_TOKEN != ''
+    if: needs.version.outputs.should_release == 'true'
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
     steps:
+      - name: Check Homebrew token
+        id: token
+        run: |
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "HOMEBREW_TAP_TOKEN not set; skipping Homebrew formula update."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.token.outputs.available == 'true'
         uses: actions/checkout@v4
 
       - name: Download macOS checksum assets
+        if: steps.token.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.version.outputs.tag }}
@@ -387,6 +401,7 @@ jobs:
             --dir release-assets
 
       - name: Read checksums
+        if: steps.token.outputs.available == 'true'
         id: shas
         env:
           TAG: ${{ needs.version.outputs.tag }}
@@ -398,13 +413,13 @@ jobs:
           echo "sha_x86_64=${sha_x86_64}" >> "$GITHUB_OUTPUT"
 
       - name: Clone tap repository
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        if: steps.token.outputs.available == 'true'
         run: |
           set -euo pipefail
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/pechanxur/homebrew-vartui.git" tap-repo
 
       - name: Generate formula
+        if: steps.token.outputs.available == 'true'
         env:
           TAG: ${{ needs.version.outputs.tag }}
           SHA_ARM64: ${{ steps.shas.outputs.sha_arm64 }}
@@ -420,6 +435,7 @@ jobs:
             --output "tap-repo/Formula/vartui.rb"
 
       - name: Commit and push formula update
+        if: steps.token.outputs.available == 'true'
         working-directory: tap-repo
         env:
           TAG: ${{ needs.version.outputs.tag }}
