@@ -512,5 +512,8 @@ homebrew:
     - cd tap-repo
     - if git diff --quiet -- Formula/vartui.rb; then echo "No formula changes"; exit 0; fi
     - git add Formula/vartui.rb
-    - git -c user.name="gitlab-ci" -c user.email="gitlab-ci@${CI_SERVER_HOST}" commit -m "chore(homebrew): update formula for ${RELEASE_TAG}"
+    - |
+      git -c user.name="gitlab-ci" \
+        -c user.email="gitlab-ci@${CI_SERVER_HOST}" \
+        commit -m "chore(homebrew): update formula for ${RELEASE_TAG}"
     - git push origin HEAD
