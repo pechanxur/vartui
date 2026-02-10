@@ -370,6 +370,7 @@ jobs:
     if: needs.version.outputs.should_release == 'true'
     env:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      HOMEBREW_TAP_BRANCH: ${{ vars.HOMEBREW_TAP_BRANCH }}
 
     steps:
       - name: Check Homebrew token
@@ -414,9 +415,13 @@ jobs:
 
       - name: Clone tap repository
         if: steps.token.outputs.available == 'true'
+        id: tap
         run: |
           set -euo pipefail
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/pechanxur/homebrew-vartui.git" tap-repo
+          branch="${HOMEBREW_TAP_BRANCH:-main}"
+          git -C tap-repo checkout -B "${branch}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
 
       - name: Generate formula
         if: steps.token.outputs.available == 'true'
@@ -439,15 +444,17 @@ jobs:
         working-directory: tap-repo
         env:
           TAG: ${{ needs.version.outputs.tag }}
+          TAP_BRANCH: ${{ steps.tap.outputs.branch }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- Formula/vartui.rb; then
+          git add Formula/vartui.rb
+
+          if git diff --cached --quiet; then
             echo "No formula changes"
             exit 0
           fi
 
-          git add Formula/vartui.rb
           git -c user.name="github-actions[bot]" \
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -m "chore(homebrew): update formula for ${TAG}"
-          git push
+          git push origin "HEAD:${TAP_BRANCH:-main}"
