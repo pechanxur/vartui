@@ -1,11 +1,11 @@
+use chrono::Local;
+use ratatui::widgets::ListState;
 use std::env;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
-use chrono::Local;
-use ratatui::widgets::ListState;
 
-use crate::domain::models::*;
 use crate::domain::config::AppConfig;
+use crate::domain::models::*;
 use crate::infrastructure::api_client::ApiClient;
 use crate::infrastructure::config::{load_config, save_config};
 use crate::utils::parsing::*;
@@ -61,8 +61,14 @@ impl EntryForm {
             selected_project: None,
         }
     }
-    
-    pub fn with_entry_data(date: String, project_name: String, description: String, minutes: i32, is_billable: bool) -> Self {
+
+    pub fn with_entry_data(
+        date: String,
+        project_name: String,
+        description: String,
+        minutes: i32,
+        is_billable: bool,
+    ) -> Self {
         let hours = minutes / 60;
         let mins = minutes % 60;
         Self {
@@ -77,7 +83,7 @@ impl EntryForm {
             selected_project: None,
         }
     }
-    
+
     pub fn next_field(&mut self) {
         self.focused = match self.focused {
             FormField::Date => FormField::ProjectId,
@@ -99,12 +105,10 @@ impl EntryForm {
     }
 }
 
-
-
 // Helper struct to return data from background thread
 pub struct BackgroundResult {
-     pub days: Vec<Day>,
-     pub status: String,
+    pub days: Vec<Day>,
+    pub status: String,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -141,13 +145,13 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let config = load_config();
-        
+
         let mut date_range = initial_date_range();
         // Apply config overrides if present
         if let Some(range_str) = &config.default_date_range {
-             if let Ok(r) = parse_date_range(range_str) {
-                 date_range = r;
-             }
+            if let Ok(r) = parse_date_range(range_str) {
+                date_range = r;
+            }
         }
 
         let days = build_empty_days(&date_range);
@@ -172,7 +176,7 @@ impl App {
         };
         // Ensure valid selection on init
         if !app.days.is_empty() {
-             app.day_state.select(Some(0));
+            app.day_state.select(Some(0));
         }
         app
     }
@@ -263,29 +267,47 @@ impl App {
     }
 
     pub fn selected_entry(&self) -> Option<&Entry> {
-        self.selected_day()
-            .and_then(|day| self.entry_state.selected().and_then(|idx| day.entries.get(idx)))
+        self.selected_day().and_then(|day| {
+            self.entry_state
+                .selected()
+                .and_then(|idx| day.entries.get(idx))
+        })
     }
 
     pub fn open_duplicate_entry(&mut self) {
         if self.focus != AppFocus::Entries {
             return;
         }
-        
+
         // Get data from selected entry
         let (date, project_name, description, minutes) = if let Some(day) = self.selected_day() {
-            if let Some(entry) = self.entry_state.selected().and_then(|idx| day.entries.get(idx)) {
+            if let Some(entry) = self
+                .entry_state
+                .selected()
+                .and_then(|idx| day.entries.get(idx))
+            {
                 let mins = (entry.hours * 60.0) as i32;
-                (day.date.clone(), entry.project.clone(), entry.note.clone(), mins)
+                (
+                    day.date.clone(),
+                    entry.project.clone(),
+                    entry.note.clone(),
+                    mins,
+                )
             } else {
                 return;
             }
         } else {
             return;
         };
-        
+
         // Create form with pre-filled data (default is_billable to true since we don't store it)
-        self.entry_form = Some(EntryForm::with_entry_data(date, project_name, description, minutes, true));
+        self.entry_form = Some(EntryForm::with_entry_data(
+            date,
+            project_name,
+            description,
+            minutes,
+            true,
+        ));
         self.input_mode = InputMode::AddingEntry;
         self.update_project_filter();
     }
@@ -333,20 +355,22 @@ impl App {
     pub fn check_background_load(&mut self) {
         let mut done = false;
         if let Some(rx) = &self.rx {
-             match rx.try_recv() {
-                 Ok(result) => {
-                     self.set_days(result.days);
-                     self.status = result.status;
-                     done = true;
-                 }
-                 Err(mpsc::TryRecvError::Empty) => {}
-                 Err(_) => { done = true; }
-             }
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.set_days(result.days);
+                    self.status = result.status;
+                    done = true;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(_) => {
+                    done = true;
+                }
+            }
         }
         if done {
             self.rx = None;
         }
-        
+
         let mut done_projects = false;
         if let Some(rx) = &self.rx_projects {
             match rx.try_recv() {
@@ -360,11 +384,13 @@ impl App {
                     done_projects = true;
                 }
                 Err(mpsc::TryRecvError::Empty) => {}
-                Err(_) => { done_projects = true; }
+                Err(_) => {
+                    done_projects = true;
+                }
             }
         }
         if done_projects {
-             self.rx_projects = None;
+            self.rx_projects = None;
         }
     }
 
@@ -398,160 +424,195 @@ impl App {
 
     pub fn form_input_push(&mut self, ch: char) {
         if let Some(form) = &mut self.entry_form {
-             match form.focused {
-                 FormField::Date => form.date.push(ch),
-                 FormField::ProjectId => {
-                     form.project_search.push(ch);
-                     self.update_project_filter();
-                 },
-                 FormField::Description => form.description.push(ch),
-                 FormField::Minutes => form.minutes.push(ch),
-                 FormField::Billable => {
-                     if ch == ' ' { form.is_billable = !form.is_billable; }
-                 },
-             }
+            match form.focused {
+                FormField::Date => form.date.push(ch),
+                FormField::ProjectId => {
+                    form.project_search.push(ch);
+                    self.update_project_filter();
+                }
+                FormField::Description => form.description.push(ch),
+                FormField::Minutes => form.minutes.push(ch),
+                FormField::Billable => {
+                    if ch == ' ' {
+                        form.is_billable = !form.is_billable;
+                    }
+                }
+            }
         }
     }
 
     pub fn form_input_backspace(&mut self) {
         if let Some(form) = &mut self.entry_form {
-             match form.focused {
-                 FormField::Date => { form.date.pop(); },
-                 FormField::ProjectId => { 
-                     form.project_search.pop(); 
-                     self.update_project_filter();
-                 },
-                 FormField::Description => { form.description.pop(); },
-                 FormField::Minutes => { form.minutes.pop(); },
-                 FormField::Billable => {},
-             }
+            match form.focused {
+                FormField::Date => {
+                    form.date.pop();
+                }
+                FormField::ProjectId => {
+                    form.project_search.pop();
+                    self.update_project_filter();
+                }
+                FormField::Description => {
+                    form.description.pop();
+                }
+                FormField::Minutes => {
+                    form.minutes.pop();
+                }
+                FormField::Billable => {}
+            }
         }
     }
-    
+
     pub fn update_project_filter(&mut self) {
-         if let Some(form) = &mut self.entry_form {
-             let query = form.project_search.to_lowercase();
-             if query.is_empty() {
-                 form.filtered_indices = (0..self.projects.len()).take(20).collect();
-             } else {
-                 form.filtered_indices = self.projects.iter().enumerate()
-                     .filter(|(_, p)| p.name.to_lowercase().contains(&query))
-                     .map(|(i, _)| i)
-                     .take(20) 
-                     .collect();
-             }
-             if !form.filtered_indices.is_empty() {
-                 form.list_state.select(Some(0));
-             } else {
-                 form.list_state.select(None);
-             }
-         }
+        if let Some(form) = &mut self.entry_form {
+            let query = form.project_search.to_lowercase();
+            if query.is_empty() {
+                form.filtered_indices = (0..self.projects.len()).take(20).collect();
+            } else {
+                form.filtered_indices = self
+                    .projects
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.name.to_lowercase().contains(&query))
+                    .map(|(i, _)| i)
+                    .take(20)
+                    .collect();
+            }
+            if !form.filtered_indices.is_empty() {
+                form.list_state.select(Some(0));
+            } else {
+                form.list_state.select(None);
+            }
+        }
     }
 
     pub fn form_nav_up(&mut self) {
         if let Some(form) = &mut self.entry_form {
-             if form.focused == FormField::ProjectId && !form.filtered_indices.is_empty() {
-                  let i = form.list_state.selected().unwrap_or(0);
-                  if i > 0 { form.list_state.select(Some(i - 1)); }
-             }
+            if form.focused == FormField::ProjectId && !form.filtered_indices.is_empty() {
+                let i = form.list_state.selected().unwrap_or(0);
+                if i > 0 {
+                    form.list_state.select(Some(i - 1));
+                }
+            }
         }
     }
 
     pub fn form_nav_down(&mut self) {
         if let Some(form) = &mut self.entry_form {
-             if form.focused == FormField::ProjectId && !form.filtered_indices.is_empty() {
-                  let i = form.list_state.selected().unwrap_or(0);
-                  if i + 1 < form.filtered_indices.len() { form.list_state.select(Some(i + 1)); }
-             }
+            if form.focused == FormField::ProjectId && !form.filtered_indices.is_empty() {
+                let i = form.list_state.selected().unwrap_or(0);
+                if i + 1 < form.filtered_indices.len() {
+                    form.list_state.select(Some(i + 1));
+                }
+            }
         }
     }
-    
+
     pub fn form_enter(&mut self) {
-         if self.entry_form.is_none() { return; }
-         
-         let is_project_focused = self.entry_form.as_ref().unwrap().focused == FormField::ProjectId;
-         if is_project_focused {
-             let form = self.entry_form.as_mut().unwrap();
-             if let Some(idx) = form.list_state.selected() {
-                 if let Some(&project_idx) = form.filtered_indices.get(idx) {
-                      if let Some(project) = self.projects.get(project_idx) {
-                           form.selected_project = Some(project.clone());
-                           form.project_search = project.name.clone();
-                           form.filtered_indices.clear(); 
-                           form.next_field();
-                           return;
-                      }
-                 }
-             }
-         }
-         
-         let is_last = self.entry_form.as_ref().unwrap().focused == FormField::Billable;
-         if is_last {
-             self.submit_entry();
-         } else {
-             self.form_next_field();
-         }
+        if self.entry_form.is_none() {
+            return;
+        }
+
+        let is_project_focused = self.entry_form.as_ref().unwrap().focused == FormField::ProjectId;
+        if is_project_focused {
+            let form = self.entry_form.as_mut().unwrap();
+            if let Some(idx) = form.list_state.selected() {
+                if let Some(&project_idx) = form.filtered_indices.get(idx) {
+                    if let Some(project) = self.projects.get(project_idx) {
+                        form.selected_project = Some(project.clone());
+                        form.project_search = project.name.clone();
+                        form.filtered_indices.clear();
+                        form.next_field();
+                        return;
+                    }
+                }
+            }
+        }
+
+        let is_last = self.entry_form.as_ref().unwrap().focused == FormField::Billable;
+        if is_last {
+            self.submit_entry();
+        } else {
+            self.form_next_field();
+        }
     }
 
     pub fn submit_entry(&mut self) {
         let (d, p_id, desc, m_str, is_billable) = if let Some(form) = &self.entry_form {
-             let pid = if let Some(p) = &form.selected_project {
-                 p.id
-             } else {
-                 form.project_search.parse().unwrap_or(0)
-             };
-             (form.date.clone(), pid, form.description.clone(), form.minutes.clone(), form.is_billable)
+            let pid = if let Some(p) = &form.selected_project {
+                p.id
+            } else {
+                form.project_search.parse().unwrap_or(0)
+            };
+            (
+                form.date.clone(),
+                pid,
+                form.description.clone(),
+                form.minutes.clone(),
+                form.is_billable,
+            )
         } else {
             return;
         };
-        
+
         if d.is_empty() || p_id == 0 || desc.is_empty() || m_str.is_empty() {
-             self.status = "error: campos vacios o proyecto invalido".to_string();
-             return;
+            self.status = "error: campos vacios o proyecto invalido".to_string();
+            return;
         }
 
         let minutes: i32 = if m_str.contains(':') {
-             let parts: Vec<&str> = m_str.split(':').collect();
-             if parts.len() == 2 {
-                 let h: i32 = parts[0].trim().parse().unwrap_or(0);
-                 let m: i32 = parts[1].trim().parse().unwrap_or(0);
-                 h * 60 + m
-             } else { 0 }
+            let parts: Vec<&str> = m_str.split(':').collect();
+            if parts.len() == 2 {
+                let h: i32 = parts[0].trim().parse().unwrap_or(0);
+                let m: i32 = parts[1].trim().parse().unwrap_or(0);
+                h * 60 + m
+            } else {
+                0
+            }
         } else {
-             m_str.parse().unwrap_or(0)
+            m_str.parse().unwrap_or(0)
         };
 
         if minutes == 0 {
             self.status = "error: tiempo invalido (0 o formato incorrecto)".to_string();
             return;
         }
-        
+
         self.status = "creando registro...".to_string();
-        
-        let token = env::var("VAR_TOKEN").unwrap_or_default().replace('"', "").trim().to_string();
-        let mut base_url = env::var("VAR_BASE_URL").ok()
+
+        let token = env::var("VAR_TOKEN")
+            .unwrap_or_default()
+            .replace('"', "")
+            .trim()
+            .to_string();
+        let mut base_url = env::var("VAR_BASE_URL")
+            .ok()
             .map(|v| v.replace('"', "").trim().to_string())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| API_BASE.to_string());
-        if base_url.ends_with('/') { base_url.pop(); }
+        if base_url.ends_with('/') {
+            base_url.pop();
+        }
 
         let client = match ApiClient::new(base_url, token) {
-             Ok(c) => c,
-             Err(e) => { self.status = format!("error cliente: {}", e); return; }
+            Ok(c) => c,
+            Err(e) => {
+                self.status = format!("error cliente: {}", e);
+                return;
+            }
         };
-        
+
         match client.create_time_entry(&d, p_id, &desc, minutes, is_billable) {
             Ok(_) => {
                 self.close_add_entry();
                 self.status = "registro creado!".to_string();
                 self.refresh();
-            },
+            }
             Err(e) => {
                 self.status = format!("error crear: {}", e);
             }
         }
     }
-    
+
     // Config Modal Methods
     pub fn open_config(&mut self) {
         self.config_form = Some(ConfigForm {
@@ -563,26 +624,30 @@ impl App {
         self.input_mode = InputMode::Configuring;
         self.status = "Configurando...".to_string();
     }
-    
+
     pub fn close_config(&mut self) {
         self.config_form = None;
         self.input_mode = InputMode::Normal;
         self.status = "Cancelado".to_string();
     }
-    
+
     pub fn save_config_form(&mut self) {
         if let Some(form) = &self.config_form {
             let mut new_config = self.config.clone();
             new_config.var_token = form.token.trim().to_string();
             new_config.base_url = form.base_url.trim().to_string();
-            
+
             let dr = form.default_range.trim();
-            new_config.default_date_range = if dr.is_empty() { None } else { Some(dr.to_string()) };
-            
+            new_config.default_date_range = if dr.is_empty() {
+                None
+            } else {
+                Some(dr.to_string())
+            };
+
             match save_config(&new_config) {
                 Ok(_) => {
                     self.config = new_config;
-                    
+
                     // Apply new date range if set
                     if let Some(range_str) = &self.config.default_date_range {
                         if let Ok(r) = parse_date_range(range_str) {
@@ -590,19 +655,19 @@ impl App {
                             self.set_days(build_empty_days(&self.date_range));
                         }
                     }
-                    
+
                     self.status = "Configuracion guardada!".to_string();
                     self.config_form = None;
                     self.input_mode = InputMode::Normal;
                     self.refresh();
-                },
+                }
                 Err(e) => {
                     self.status = format!("Error guardando: {}", e);
                 }
             }
         }
     }
-    
+
     pub fn config_next_field(&mut self) {
         if let Some(form) = &mut self.config_form {
             form.focused = match form.focused {
@@ -612,7 +677,7 @@ impl App {
             };
         }
     }
-    
+
     pub fn config_input(&mut self, ch: char) {
         if let Some(form) = &mut self.config_form {
             match form.focused {
@@ -622,17 +687,23 @@ impl App {
             }
         }
     }
-    
+
     pub fn config_backspace(&mut self) {
         if let Some(form) = &mut self.config_form {
             match form.focused {
-                ConfigField::Token => { form.token.pop(); },
-                ConfigField::BaseUrl => { form.base_url.pop(); },
-                ConfigField::DefaultRange => { form.default_range.pop(); },
+                ConfigField::Token => {
+                    form.token.pop();
+                }
+                ConfigField::BaseUrl => {
+                    form.base_url.pop();
+                }
+                ConfigField::DefaultRange => {
+                    form.default_range.pop();
+                }
             }
         }
     }
-    
+
     pub fn config_clear_field(&mut self) {
         if let Some(form) = &mut self.config_form {
             match form.focused {
@@ -642,21 +713,27 @@ impl App {
             }
         }
     }
-    
+
     // Helpers to resolve Env vs Config
     pub fn get_effective_token(&self) -> String {
         if !self.config.var_token.is_empty() {
-             self.config.var_token.clone()
+            self.config.var_token.clone()
         } else {
-             env::var("VAR_TOKEN").unwrap_or_default().replace('"', "").trim().to_string()
+            env::var("VAR_TOKEN")
+                .unwrap_or_default()
+                .replace('"', "")
+                .trim()
+                .to_string()
         }
     }
-    
+
     pub fn get_effective_base_url(&self) -> String {
-        if !self.config.base_url.is_empty() && self.config.base_url != "https://var.elaniin.com/api" {
-             self.config.base_url.clone()
+        if !self.config.base_url.is_empty() && self.config.base_url != "https://var.elaniin.com/api"
+        {
+            self.config.base_url.clone()
         } else {
-             env::var("VAR_BASE_URL").ok()
+            env::var("VAR_BASE_URL")
+                .ok()
                 .map(|v| v.replace('"', "").trim().to_string())
                 .filter(|v| !v.is_empty())
                 .unwrap_or_else(|| API_BASE.to_string())
@@ -667,34 +744,48 @@ impl App {
 // Background Task functions
 pub fn spawn_load(range: DateRange, config: &AppConfig) -> Receiver<BackgroundResult> {
     let (tx, rx) = mpsc::channel();
-    let token = if !config.var_token.is_empty() { 
-        config.var_token.clone() 
-    } else { 
-        env::var("VAR_TOKEN").unwrap_or_default().replace('"', "").trim().to_string() 
-    };
-    let mut base_url = if !config.base_url.is_empty() && config.base_url != "https://var.elaniin.com/api" {
-        config.base_url.clone()
+    let token = if !config.var_token.is_empty() {
+        config.var_token.clone()
     } else {
-        env::var("VAR_BASE_URL").ok()
-            .map(|v| v.replace('"', "").trim().to_string())
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| API_BASE.to_string())
+        env::var("VAR_TOKEN")
+            .unwrap_or_default()
+            .replace('"', "")
+            .trim()
+            .to_string()
     };
-    if base_url.ends_with('/') { base_url.pop(); }
+    let mut base_url =
+        if !config.base_url.is_empty() && config.base_url != "https://var.elaniin.com/api" {
+            config.base_url.clone()
+        } else {
+            env::var("VAR_BASE_URL")
+                .ok()
+                .map(|v| v.replace('"', "").trim().to_string())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| API_BASE.to_string())
+        };
+    if base_url.ends_with('/') {
+        base_url.pop();
+    }
 
     thread::spawn(move || {
         let result = match ApiClient::new(base_url, token) {
             Ok(client) => match client.fetch_days(&range.start, &range.end) {
-                 Ok(fetch_res) => {
-                     let count = fetch_res.days.len();
-                     BackgroundResult {
-                         days: fetch_res.days,
-                         status: format!("actualizado: {} dias", count),
-                     }
-                 },
-                 Err(e) => BackgroundResult { days: Vec::new(), status: e },
+                Ok(fetch_res) => {
+                    let count = fetch_res.days.len();
+                    BackgroundResult {
+                        days: fetch_res.days,
+                        status: format!("actualizado: {} dias", count),
+                    }
+                }
+                Err(e) => BackgroundResult {
+                    days: Vec::new(),
+                    status: e,
+                },
             },
-            Err(e) => BackgroundResult { days: Vec::new(), status: e },
+            Err(e) => BackgroundResult {
+                days: Vec::new(),
+                status: e,
+            },
         };
         let _ = tx.send(result);
     });
@@ -703,25 +794,33 @@ pub fn spawn_load(range: DateRange, config: &AppConfig) -> Receiver<BackgroundRe
 
 pub fn spawn_load_projects(config: &AppConfig) -> Receiver<Result<Vec<Project>, String>> {
     let (tx, rx) = mpsc::channel();
-    let token = if !config.var_token.is_empty() { 
-        config.var_token.clone() 
-    } else { 
-        env::var("VAR_TOKEN").unwrap_or_default().replace('"', "").trim().to_string() 
-    };
-    let mut base_url = if !config.base_url.is_empty() && config.base_url != "https://var.elaniin.com/api" {
-        config.base_url.clone()
+    let token = if !config.var_token.is_empty() {
+        config.var_token.clone()
     } else {
-        env::var("VAR_BASE_URL").ok()
-            .map(|v| v.replace('"', "").trim().to_string())
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| API_BASE.to_string())
+        env::var("VAR_TOKEN")
+            .unwrap_or_default()
+            .replace('"', "")
+            .trim()
+            .to_string()
     };
-    if base_url.ends_with('/') { base_url.pop(); }
+    let mut base_url =
+        if !config.base_url.is_empty() && config.base_url != "https://var.elaniin.com/api" {
+            config.base_url.clone()
+        } else {
+            env::var("VAR_BASE_URL")
+                .ok()
+                .map(|v| v.replace('"', "").trim().to_string())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| API_BASE.to_string())
+        };
+    if base_url.ends_with('/') {
+        base_url.pop();
+    }
 
     thread::spawn(move || {
         let result = match ApiClient::new(base_url, token) {
-             Ok(client) => client.fetch_projects_list().map_err(|e| e),
-             Err(e) => Err(e),
+            Ok(client) => client.fetch_projects_list().map_err(|e| e),
+            Err(e) => Err(e),
         };
         let _ = tx.send(result);
     });

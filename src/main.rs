@@ -4,26 +4,62 @@ mod infrastructure;
 mod ui;
 mod utils;
 
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use std::env;
 use std::io;
 use std::time::Duration;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
 use crate::application::app::{App, AppFocus, InputMode};
-use crate::ui::tui::{setup_terminal, restore_terminal};
+use crate::application::cli::{api_help, run_api};
+use crate::ui::tui::{restore_terminal, setup_terminal};
 use crate::ui::ui;
 
 fn main() -> io::Result<()> {
     dotenvy::dotenv().ok();
+
+    let args: Vec<String> = env::args().collect();
+    match args.get(1).map(String::as_str) {
+        None | Some("tui") => run_tui(),
+        Some("api") => {
+            if let Err(error) = run_api(&args[2..]) {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        Some("-h") | Some("--help") | Some("help") => {
+            print_help(&args[0]);
+            Ok(())
+        }
+        Some(other) => {
+            eprintln!("Comando desconocido: {other}\n");
+            print_help(&args[0]);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_tui() -> io::Result<()> {
     let mut terminal = setup_terminal()?;
     let result = run_app(&mut terminal, App::new());
     restore_terminal(&mut terminal)?;
     result
 }
 
-fn run_app(terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<io::Stdout>>, mut app: App) -> io::Result<()> {
+fn print_help(bin: &str) {
+    println!(
+        "Uso:\n  {bin} tui\n  {bin} api <subcomando>\n\nSubcomandos API:\n{}",
+        api_help()
+    );
+}
+
+fn run_app(
+    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<io::Stdout>>,
+    mut app: App,
+) -> io::Result<()> {
     loop {
         terminal.draw(|frame| ui(frame, &mut app))?;
-        
+
         app.check_background_load();
 
         if event::poll(Duration::from_millis(250))? {
@@ -58,7 +94,9 @@ fn run_app(terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<i
                         KeyCode::Tab => app.config_next_field(),
                         KeyCode::Enter => app.save_config_form(),
                         KeyCode::Backspace => app.config_backspace(),
-                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => app.config_clear_field(),
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.config_clear_field()
+                        }
                         KeyCode::Char(value) => app.config_input(value),
                         _ => {}
                     }

@@ -1,7 +1,8 @@
 pub mod components;
-pub mod tui;
 pub mod helpers;
+pub mod tui;
 
+use chrono::{Datelike, Local};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
@@ -9,18 +10,17 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
-use chrono::{Datelike, Local};
 
 use crate::application::app::{App, AppFocus, InputMode};
-use crate::utils::parsing::parse_date;
-use crate::ui::components::entry_modal::render_add_entry_modal;
 use crate::ui::components::config_modal::render_config_modal;
+use crate::ui::components::entry_modal::render_add_entry_modal;
+use crate::utils::parsing::parse_date;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(6), Constraint::Length(3)])
-        .split(frame.size());
+        .split(frame.area());
 
     let top = Layout::default()
         .direction(Direction::Horizontal)
@@ -31,27 +31,31 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         .days
         .iter()
         .map(|day| {
-             let hours = day.total_hours();
-             let date_parsed = parse_date(&day.date).unwrap_or_else(|| Local::now().date_naive());
-             let weekday = date_parsed.weekday();
-             
-             let target = match weekday {
-                 chrono::Weekday::Fri => 8.0,
-                 chrono::Weekday::Sat | chrono::Weekday::Sun => 0.0,
-                 _ => 9.0, // Mon-Thu
-             };
+            let hours = day.total_hours();
+            let date_parsed = parse_date(&day.date).unwrap_or_else(|| Local::now().date_naive());
+            let weekday = date_parsed.weekday();
 
-             let is_future = date_parsed > Local::now().date_naive();
-             
-             let color = if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
-                 if hours > 0.0 { Color::Green } else { Color::White }
-             } else if is_future {
-                 Color::White
-             } else if hours >= target {
-                 Color::Green
-             } else {
-                 Color::Red 
-             };
+            let target = match weekday {
+                chrono::Weekday::Fri => 8.0,
+                chrono::Weekday::Sat | chrono::Weekday::Sun => 0.0,
+                _ => 9.0, // Mon-Thu
+            };
+
+            let is_future = date_parsed > Local::now().date_naive();
+
+            let color = if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+                if hours > 0.0 {
+                    Color::Green
+                } else {
+                    Color::White
+                }
+            } else if is_future {
+                Color::White
+            } else if hours >= target {
+                Color::Green
+            } else {
+                Color::Red
+            };
 
             ListItem::new(Line::from(vec![
                 Span::styled(format!("{}  ", day.date), Style::default()),
@@ -142,13 +146,13 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         let cursor_x = actions_area.x + (prompt_len + app.input.chars().count()) as u16;
         let cursor_y = actions_area.y;
         let max_x = actions_area.x + actions_area.width.saturating_sub(1);
-        frame.set_cursor(cursor_x.min(max_x), cursor_y);
+        frame.set_cursor_position((cursor_x.min(max_x), cursor_y));
     }
 
     if app.input_mode == InputMode::AddingEntry {
         render_add_entry_modal(frame, app);
     }
-    
+
     if app.input_mode == InputMode::Configuring {
         render_config_modal(frame, app);
     }

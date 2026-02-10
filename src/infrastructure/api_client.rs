@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::time::Duration;
 use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::domain::models::*;
 use crate::log;
@@ -18,8 +18,6 @@ pub enum QueryStyle {
     Snake,
     Camel,
 }
-
-
 
 pub struct FetchResult {
     pub days: Vec<Day>,
@@ -38,39 +36,55 @@ impl ApiClient {
             client,
         })
     }
-    
-    pub fn create_time_entry(&self, date: &str, project_id: i32, description: &str, minutes: i32, is_billable: bool) -> Result<(), String> {
+
+    pub fn create_time_entry(
+        &self,
+        date: &str,
+        project_id: i32,
+        description: &str,
+        minutes: i32,
+        is_billable: bool,
+    ) -> Result<(), String> {
         let url = format!("{}/time-entries", self.base_url);
         log!("POST Request URL: {}", url);
         log!("POST Token Len: {}", self.token.len());
-        log!("POST Body: date={}, pid={}, desc={}, mins={}, billable={}", date, project_id, description, minutes, is_billable);
-        
+        log!(
+            "POST Body: date={}, pid={}, desc={}, mins={}, billable={}",
+            date,
+            project_id,
+            description,
+            minutes,
+            is_billable
+        );
+
         let body = CreateEntryRequest {
-             date: date.to_string(),
-             project_id,
-             description: description.to_string(),
-             minutes,
-             is_billable,
-             tag_ids: Vec::new(),
+            date: date.to_string(),
+            project_id,
+            description: description.to_string(),
+            minutes,
+            is_billable,
+            tag_ids: Vec::new(),
         };
-        
+
         let body_json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
         log!("POST Body JSON: {}", body_json);
-        
-        let response = self.client.post(&url)
+
+        let response = self
+            .client
+            .post(&url)
             .bearer_auth(&self.token)
             .json(&body)
             .send()
             .map_err(|e| format!("Reqwest Error (builder/send): {}", e))?;
-            
+
         let status = response.status();
         log!("POST Response Status: {}", status);
         if status.is_success() || status.as_u16() == 201 {
-             Ok(())
+            Ok(())
         } else {
-             let text = response.text().unwrap_or_default();
-             log!("POST Error Body: {}", text);
-             Err(format!("{} {}", status.as_u16(), text))
+            let text = response.text().unwrap_or_default();
+            log!("POST Error Body: {}", text);
+            Err(format!("{} {}", status.as_u16(), text))
         }
     }
 
@@ -80,32 +94,34 @@ impl ApiClient {
         let (time_entries, _) = self.get_time_entries(start_date, end_date)?;
         let entries_count = time_entries.len();
         log!("Fetched {} entries", entries_count);
-        
+
         let days = crate::utils::parsing::build_days(time_entries, projects, start_date, end_date);
-        Ok(FetchResult {
-            days,
-        })
+        Ok(FetchResult { days })
     }
-    
+
     pub fn fetch_projects_list(&self) -> Result<Vec<Project>, String> {
         let url = format!("{}/projects", self.base_url);
         log!("Fetching projects from: {}", url);
-        let response = self.client.get(url)
+        let response = self
+            .client
+            .get(url)
             .bearer_auth(&self.token)
             .send()
             .map_err(|e| e.to_string())?;
-            
+
         let status = response.status();
         log!("Projects response status: {}", status);
         let text = response.text().map_err(|e| e.to_string())?;
-        
+
         // Parse as Map<String, Vec<Project>>
-        let map: HashMap<String, Vec<Project>> = serde_json::from_str(&text)
-            .map_err(|e| {
-                log!("Error parsing projects JSON: {}", e);
-                format!("Error parsing projects: {} | Response start: {:.50}", e, text)
-            })?;
-            
+        let map: HashMap<String, Vec<Project>> = serde_json::from_str(&text).map_err(|e| {
+            log!("Error parsing projects JSON: {}", e);
+            format!(
+                "Error parsing projects: {} | Response start: {:.50}",
+                e, text
+            )
+        })?;
+
         let mut all_projects = Vec::new();
         for (client, mut projects) in map {
             for p in &mut projects {
@@ -114,10 +130,8 @@ impl ApiClient {
             all_projects.extend(projects);
         }
         // Sort by Client then Name
-        all_projects.sort_by(|a, b| {
-            a.client_name.cmp(&b.client_name).then(a.name.cmp(&b.name))
-        });
-        
+        all_projects.sort_by(|a, b| a.client_name.cmp(&b.client_name).then(a.name.cmp(&b.name)));
+
         Ok(all_projects)
     }
 
@@ -155,25 +169,32 @@ impl ApiClient {
             QueryStyle::Camel => request.query(&[("startDate", start_date), ("endDate", end_date)]),
         };
         let response = request.send().map_err(|error| error.to_string())?;
-        
+
         let status = response.status();
         if !status.is_success() {
-             let body = response.text().unwrap_or_default();
-             return Err(format!("{} {}", status.as_u16(), body.lines().next().unwrap_or("")));
+            let body = response.text().unwrap_or_default();
+            return Err(format!(
+                "{} {}",
+                status.as_u16(),
+                body.lines().next().unwrap_or("")
+            ));
         }
-        
+
         let body = response.text().unwrap_or_default();
         // Try parsing as HashMap<String, Vec<TimeEntry>>
         if let Ok(map) = serde_json::from_str::<HashMap<String, Vec<TimeEntry>>>(&body) {
-             let mut all_entries = Vec::new();
-             for entries in map.into_values() {
-                 all_entries.extend(entries);
-             }
-             return Ok(all_entries);
+            let mut all_entries = Vec::new();
+            for entries in map.into_values() {
+                all_entries.extend(entries);
+            }
+            return Ok(all_entries);
         }
 
         // Fallback to old list parsing
-        parse_list_from_body(&body, &["data", "time_entries", "timeEntries", "entries", "items"])
+        parse_list_from_body(
+            &body,
+            &["data", "time_entries", "timeEntries", "entries", "items"],
+        )
     }
 }
 
@@ -183,7 +204,7 @@ fn should_try_alt_dates(_start: &str, _end: &str, count: usize) -> bool {
     }
     // Simple heuristic: if range is > 1 day and we got 0 entries, maybe format issue?
     // But keeping it simple as per original code
-    true 
+    true
 }
 
 fn parse_list_from_body<T: DeserializeOwned>(body: &str, keys: &[&str]) -> Result<Vec<T>, String> {

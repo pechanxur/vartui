@@ -122,7 +122,7 @@ pub fn initial_date_range() -> crate::domain::models::DateRange {
 pub fn parse_date_range(input: &str) -> Result<crate::domain::models::DateRange, String> {
     use chrono::Datelike;
     let now = chrono::Local::now().date_naive();
-    
+
     // Handle special keywords
     match input.trim().to_uppercase().as_str() {
         "AUTO" | "AUTO-MONTH" | "MONTH" => {
@@ -143,15 +143,18 @@ pub fn parse_date_range(input: &str) -> Result<crate::domain::models::DateRange,
         }
         _ => {}
     }
-    
+
     // Standard format: YYYY-MM-DD..YYYY-MM-DD
     let parts: Vec<&str> = input.split("..").collect();
     if parts.len() != 2 {
-        return Err("Formato incorrecto. Use YYYY-MM-DD..YYYY-MM-DD, AUTO, AUTO-WEEK, o AUTO-MONTH".to_string());
+        return Err(
+            "Formato incorrecto. Use YYYY-MM-DD..YYYY-MM-DD, AUTO, AUTO-WEEK, o AUTO-MONTH"
+                .to_string(),
+        );
     }
     let start_str = parts[0].trim();
     let end_str = parts[1].trim();
-    
+
     // basic validation
     if parse_date(start_str).is_none() {
         return Err(format!("Fecha inicio invalida: {}", start_str));
@@ -159,7 +162,7 @@ pub fn parse_date_range(input: &str) -> Result<crate::domain::models::DateRange,
     if parse_date(end_str).is_none() {
         return Err(format!("Fecha fin invalida: {}", end_str));
     }
-    
+
     Ok(crate::domain::models::DateRange {
         start: start_str.to_string(),
         end: end_str.to_string(),
