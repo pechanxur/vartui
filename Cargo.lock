@@ -1608,6 +1608,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatui-themes"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eccc556997e7f9e1391a1744c69394b01d443b96a87f7d6cb43ad3bb987d8a3"
+dependencies = [
+ "ratatui",
+ "serde",
+]
+
+[[package]]
 name = "ratatui-widgets"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2270,9 +2280,11 @@ dependencies = [
  "crossterm",
  "dotenvy",
  "ratatui",
+ "ratatui-themes",
  "reqwest",
  "serde",
  "serde_json",
+ "toon",
 ]
 
 [[package]]
@@ -2375,6 +2387,16 @@ name = "toml_writer"
 version = "1.0.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab16f14aed21ee8bfd8ec22513f7287cd4a91aa92e44edfe2c17ddd004e92607"
+
+[[package]]
+name = "toon"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fa605a2aa68fefdedc9560bd765ce3ad89d45ac1d3ebad43724621098c9299a"
+dependencies = [
+ "regex",
+ "serde_json",
+]
 
 [[package]]
 name = "tower"

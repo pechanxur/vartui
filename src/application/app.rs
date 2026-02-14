@@ -12,6 +12,24 @@ use crate::utils::parsing::*;
 
 const API_BASE: &str = "https://var.elaniin.com/api";
 
+const THEME_OPTIONS: &[&str] = &[
+    "dracula",
+    "one-dark-pro",
+    "nord",
+    "catppuccin-mocha",
+    "catppuccin-latte",
+    "gruvbox-dark",
+    "gruvbox-light",
+    "tokyo-night",
+    "solarized-dark",
+    "solarized-light",
+    "monokai-pro",
+    "rose-pine",
+    "kanagawa",
+    "everforest",
+    "cyberpunk",
+];
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
     Normal,
@@ -116,12 +134,15 @@ pub enum ConfigField {
     Token,
     BaseUrl,
     DefaultRange,
+    Theme,
 }
 
 pub struct ConfigForm {
     pub token: String,
     pub base_url: String,
     pub default_range: String,
+    pub theme: String,
+    pub theme_list_state: ListState,
     pub focused: ConfigField,
 }
 
@@ -200,6 +221,42 @@ impl App {
             app.open_config();
             app.status =
                 "No hay token configurado. Ingresa VAR Token y presiona Enter.".to_string();
+        }
+
+        app
+    }
+
+    pub fn new_headless() -> Self {
+        let config = load_config();
+
+        let mut date_range = initial_date_range();
+        if let Some(range_str) = &config.default_date_range {
+            if let Ok(r) = parse_date_range(range_str) {
+                date_range = r;
+            }
+        }
+
+        let days = build_empty_days(&date_range);
+
+        let mut app = Self {
+            days,
+            day_state: ListState::default(),
+            entry_state: ListState::default(),
+            focus: AppFocus::Days,
+            status: "sesion mcp lista".to_string(),
+            date_range,
+            input_mode: InputMode::Normal,
+            input: String::new(),
+            rx: None,
+            rx_projects: None,
+            entry_form: None,
+            projects: Vec::new(),
+            config,
+            config_form: None,
+        };
+
+        if !app.days.is_empty() {
+            app.day_state.select(Some(0));
         }
 
         app
@@ -648,10 +705,16 @@ impl App {
 
     // Config Modal Methods
     pub fn open_config(&mut self) {
+        let theme = canonical_theme_slug(&self.config.theme).to_string();
+        let mut theme_list_state = ListState::default();
+        theme_list_state.select(Some(theme_index_for_query(&theme)));
+
         self.config_form = Some(ConfigForm {
             token: self.config.var_token.clone(),
             base_url: self.config.base_url.clone(),
             default_range: self.config.default_date_range.clone().unwrap_or_default(),
+            theme,
+            theme_list_state,
             focused: ConfigField::Token,
         });
         self.input_mode = InputMode::Configuring;
@@ -669,6 +732,8 @@ impl App {
             let mut new_config = self.config.clone();
             new_config.var_token = form.token.trim().to_string();
             new_config.base_url = form.base_url.trim().to_string();
+            let theme = form.theme.trim();
+            new_config.theme = canonical_theme_slug(theme).to_string();
 
             let dr = form.default_range.trim();
             new_config.default_date_range = if dr.is_empty() {
@@ -706,22 +771,44 @@ impl App {
             form.focused = match form.focused {
                 ConfigField::Token => ConfigField::BaseUrl,
                 ConfigField::BaseUrl => ConfigField::DefaultRange,
-                ConfigField::DefaultRange => ConfigField::Token,
+                ConfigField::DefaultRange => ConfigField::Theme,
+                ConfigField::Theme => ConfigField::Token,
+            };
+        }
+    }
+
+    pub fn config_prev_field(&mut self) {
+        if let Some(form) = &mut self.config_form {
+            form.focused = match form.focused {
+                ConfigField::Token => ConfigField::Theme,
+                ConfigField::BaseUrl => ConfigField::Token,
+                ConfigField::DefaultRange => ConfigField::BaseUrl,
+                ConfigField::Theme => ConfigField::DefaultRange,
             };
         }
     }
 
     pub fn config_input(&mut self, ch: char) {
+        let mut should_sync_theme = false;
         if let Some(form) = &mut self.config_form {
             match form.focused {
                 ConfigField::Token => form.token.push(ch),
                 ConfigField::BaseUrl => form.base_url.push(ch),
                 ConfigField::DefaultRange => form.default_range.push(ch),
+                ConfigField::Theme => {
+                    form.theme.push(ch);
+                    should_sync_theme = true;
+                }
             }
+        }
+
+        if should_sync_theme {
+            self.config_sync_theme_state();
         }
     }
 
     pub fn config_backspace(&mut self) {
+        let mut should_sync_theme = false;
         if let Some(form) = &mut self.config_form {
             match form.focused {
                 ConfigField::Token => {
@@ -733,7 +820,15 @@ impl App {
                 ConfigField::DefaultRange => {
                     form.default_range.pop();
                 }
+                ConfigField::Theme => {
+                    form.theme.pop();
+                    should_sync_theme = true;
+                }
             }
+        }
+
+        if should_sync_theme {
+            self.config_sync_theme_state();
         }
     }
 
@@ -743,7 +838,68 @@ impl App {
                 ConfigField::Token => form.token.clear(),
                 ConfigField::BaseUrl => form.base_url.clear(),
                 ConfigField::DefaultRange => form.default_range.clear(),
+                ConfigField::Theme => {
+                    form.theme.clear();
+                    form.theme_list_state
+                        .select(Some(theme_index_for_query("tokyo-night")));
+                }
             }
+        }
+    }
+
+    pub fn config_set_theme_value(&mut self, value: String) {
+        if let Some(form) = &mut self.config_form {
+            form.theme = value;
+        }
+        self.config_sync_theme_state();
+    }
+
+    pub fn config_theme_next(&mut self) {
+        if let Some(form) = &mut self.config_form {
+            if form.focused != ConfigField::Theme || THEME_OPTIONS.is_empty() {
+                return;
+            }
+
+            let current = form
+                .theme_list_state
+                .selected()
+                .unwrap_or_else(|| theme_index_for_query(&form.theme));
+            let next = (current + 1) % THEME_OPTIONS.len();
+            form.theme_list_state.select(Some(next));
+            form.theme = THEME_OPTIONS[next].to_string();
+        }
+    }
+
+    pub fn config_theme_previous(&mut self) {
+        if let Some(form) = &mut self.config_form {
+            if form.focused != ConfigField::Theme || THEME_OPTIONS.is_empty() {
+                return;
+            }
+
+            let current = form
+                .theme_list_state
+                .selected()
+                .unwrap_or_else(|| theme_index_for_query(&form.theme));
+            let prev = if current == 0 {
+                THEME_OPTIONS.len() - 1
+            } else {
+                current - 1
+            };
+            form.theme_list_state.select(Some(prev));
+            form.theme = THEME_OPTIONS[prev].to_string();
+        }
+    }
+
+    fn config_sync_theme_state(&mut self) {
+        if let Some(form) = &mut self.config_form {
+            if form.theme.trim().is_empty() {
+                form.theme_list_state
+                    .select(Some(theme_index_for_query("tokyo-night")));
+                return;
+            }
+
+            let idx = theme_index_for_query(&form.theme);
+            form.theme_list_state.select(Some(idx));
         }
     }
 
@@ -758,6 +914,9 @@ impl App {
                     form.token.clear();
                     form.base_url = self.config.base_url.clone();
                     form.default_range.clear();
+                    form.theme = self.config.theme.clone();
+                    form.theme_list_state
+                        .select(Some(theme_index_for_query(&form.theme)));
                     form.focused = ConfigField::Token;
                 }
 
@@ -771,6 +930,60 @@ impl App {
             }
         }
     }
+}
+
+fn canonical_theme_slug(raw: &str) -> &'static str {
+    let value = raw.trim().to_ascii_lowercase();
+
+    let normalized = match value.as_str() {
+        "" | "default" | "system" | "auto" | "tokyo" => "tokyo-night",
+        "catppuccin" | "catppuccin-dark" | "mocha" => "catppuccin-mocha",
+        "catppuccin-light" | "latte" => "catppuccin-latte",
+        "gruvbox" => "gruvbox-dark",
+        "solarized" => "solarized-dark",
+        other => other,
+    };
+
+    THEME_OPTIONS
+        .iter()
+        .copied()
+        .find(|theme| *theme == normalized)
+        .unwrap_or("tokyo-night")
+}
+
+fn theme_index_for_query(query: &str) -> usize {
+    let raw = query.trim().to_ascii_lowercase();
+
+    if raw.is_empty() {
+        return THEME_OPTIONS
+            .iter()
+            .position(|theme| *theme == "tokyo-night")
+            .unwrap_or(0);
+    }
+
+    let canonical = canonical_theme_slug(&raw);
+    if canonical != "tokyo-night" || raw == "tokyo-night" || raw == "default" || raw == "auto" {
+        return THEME_OPTIONS
+            .iter()
+            .position(|theme| *theme == canonical)
+            .unwrap_or(0);
+    }
+
+    if let Some(index) = THEME_OPTIONS
+        .iter()
+        .position(|theme| theme.starts_with(&raw))
+    {
+        return index;
+    }
+
+    if let Some(index) = THEME_OPTIONS.iter().position(|theme| theme.contains(&raw)) {
+        return index;
+    }
+
+    THEME_OPTIONS
+        .iter()
+        .position(|theme| *theme == "tokyo-night")
+        .unwrap_or(0)
 }
 
 fn resolve_token(config: &AppConfig) -> String {

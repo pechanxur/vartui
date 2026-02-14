@@ -16,3 +16,5 @@ serde_json = "1.0"
 chrono = { version = "0.4", features = ["clock"] }
 dotenvy = "0.15"
 confy = "2.0.0"
+toon = "0.1.2"
+ratatui-themes = "0.1.8"

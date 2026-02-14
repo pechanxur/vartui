@@ -1,12 +1,13 @@
 pub mod components;
 pub mod helpers;
+pub mod theme;
 pub mod tui;
 
 use chrono::{Datelike, Local};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
@@ -14,9 +15,22 @@ use ratatui::{
 use crate::application::app::{App, AppFocus, InputMode};
 use crate::ui::components::config_modal::render_config_modal;
 use crate::ui::components::entry_modal::render_add_entry_modal;
+use crate::ui::theme::{palette_with_override, resolve_theme_slug_with_override};
 use crate::utils::parsing::parse_date;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
+    let preview_theme = if app.input_mode == InputMode::Configuring {
+        app.config_form.as_ref().map(|form| form.theme.as_str())
+    } else {
+        None
+    };
+    let palette = palette_with_override(&app.config, preview_theme);
+
+    frame.render_widget(
+        Block::default().style(Style::default().bg(palette.bg).fg(palette.fg)),
+        frame.area(),
+    );
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(6), Constraint::Length(3)])
@@ -45,16 +59,16 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
             let color = if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
                 if hours > 0.0 {
-                    Color::Green
+                    palette.success
                 } else {
-                    Color::White
+                    palette.muted
                 }
             } else if is_future {
-                Color::White
+                palette.muted
             } else if hours >= target {
-                Color::Green
+                palette.success
             } else {
-                Color::Red
+                palette.error
             };
 
             ListItem::new(Line::from(vec![
@@ -75,11 +89,35 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             range_label
         )
     };
+
+    let days_border = if app.focus == AppFocus::Days {
+        Style::default()
+            .fg(palette.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(palette.muted)
+    };
+
+    let entries_border = if app.focus == AppFocus::Entries {
+        Style::default()
+            .fg(palette.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(palette.muted)
+    };
+
     let days_list = List::new(day_items)
-        .block(Block::default().title(days_title).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(days_title)
+                .borders(Borders::ALL)
+                .border_style(days_border)
+                .style(Style::default().bg(palette.bg).fg(palette.fg)),
+        )
         .highlight_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(palette.accent)
+                .bg(palette.selection)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("-> ");
@@ -102,10 +140,17 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         .collect();
 
     let entries_list = List::new(entry_items)
-        .block(Block::default().title(detail_title).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(detail_title)
+                .borders(Borders::ALL)
+                .border_style(entries_border)
+                .style(Style::default().bg(palette.bg).fg(palette.fg)),
+        )
         .highlight_style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(palette.warning)
+                .bg(palette.selection)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("» ");
@@ -134,11 +179,18 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         (actions, None)
     };
 
-    let actions_block = Block::default().title("Acciones").borders(Borders::ALL);
+    let actions_block = Block::default()
+        .title(format!(
+            "Acciones [{}]",
+            resolve_theme_slug_with_override(&app.config, preview_theme)
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(palette.accent))
+        .style(Style::default().bg(palette.bg).fg(palette.fg));
     let actions_area = actions_block.inner(layout[1]);
     let actions = Paragraph::new(actions_text)
         .block(actions_block)
-        .style(Style::default().fg(Color::DarkGray));
+        .style(Style::default().fg(palette.fg));
 
     frame.render_widget(actions, layout[1]);
 

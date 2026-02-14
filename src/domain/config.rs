@@ -9,6 +9,8 @@ pub struct AppConfig {
     // "WEEK" -> Current week
     // "YYYY-MM-DD..YYYY-MM-DD" -> Specific range
     pub default_date_range: Option<String>,
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 impl Default for AppConfig {
@@ -17,6 +19,11 @@ impl Default for AppConfig {
             var_token: String::new(),
             base_url: "https://var.elaniin.com/api".to_string(),
             default_date_range: None,
+            theme: default_theme(),
         }
     }
+}
+
+fn default_theme() -> String {
+    "tokyo-night".to_string()
 }
