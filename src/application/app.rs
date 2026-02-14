@@ -237,18 +237,38 @@ impl App {
         }
 
         let days = build_empty_days(&date_range);
+        let has_token = config_has_token(&config);
+
+        let status = if has_token {
+            "cargando...".to_string()
+        } else {
+            "No hay token configurado. Define VAR_TOKEN o guarda var_token en la configuracion."
+                .to_string()
+        };
+
+        let rx_projects = if has_token {
+            Some(spawn_load_projects(&config))
+        } else {
+            None
+        };
+
+        let rx_load = if has_token {
+            Some(spawn_load(date_range.clone(), &config))
+        } else {
+            None
+        };
 
         let mut app = Self {
             days,
             day_state: ListState::default(),
             entry_state: ListState::default(),
             focus: AppFocus::Days,
-            status: "sesion mcp lista".to_string(),
+            status,
             date_range,
             input_mode: InputMode::Normal,
             input: String::new(),
-            rx: None,
-            rx_projects: None,
+            rx: rx_load,
+            rx_projects,
             entry_form: None,
             projects: Vec::new(),
             config,

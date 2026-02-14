@@ -368,10 +368,8 @@ fn handle_tool_call(params: &Value, state: &mut ServerState) -> Result<Value, St
 fn tool_session_create(args: &ArgsMap, state: &mut ServerState) -> Result<Value, String> {
     let options = parse_response_options(args, SnapshotView::Tiny)?;
     let session_id = state.create_session();
-    let app = state
-        .sessions
-        .get(&session_id)
-        .ok_or_else(|| "No se pudo crear la sesion".to_string())?;
+    let app = state.get_session_mut(&session_id)?;
+    app.check_background_load();
 
     let snapshot = build_snapshot(&session_id, app, &options);
     let content = json!({

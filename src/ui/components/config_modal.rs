@@ -1,13 +1,13 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
-    Frame,
 };
 
 use crate::application::app::{App, ConfigField};
 use crate::ui::helpers::centered_rect;
-use crate::ui::theme::{palette_with_override, resolve_theme_name, THEME_CATALOG};
+use crate::ui::theme::{THEME_CATALOG, palette_with_override, resolve_theme_name};
 use crate::utils::version::build_version;
 
 pub fn render_config_modal(frame: &mut Frame, app: &mut App) {
