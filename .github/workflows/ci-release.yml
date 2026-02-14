@@ -183,6 +183,8 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build release binary
+        env:
+          VARTUI_RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package unix artifact

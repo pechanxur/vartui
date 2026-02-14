@@ -9,6 +9,7 @@ use toon::{Delimiter, EncodeOptions};
 use crate::application::app::{App, AppFocus, ConfigField, FormField, InputMode};
 use crate::application::input::handle_key;
 use crate::utils::parsing::parse_date_range;
+use crate::utils::version::build_version;
 
 const MCP_HELP: &str = "Uso:\n  mcp\n\nInicia un servidor MCP por stdio para automatizar el TUI con respuestas compactas en TOON.";
 
@@ -166,7 +167,7 @@ fn handle_rpc_request(request: RpcRequest, state: &mut ServerState) -> RpcOutcom
                         },
                         "serverInfo": {
                             "name": "vartui-mcp",
-                            "version": env!("CARGO_PKG_VERSION")
+                            "version": build_version()
                         },
                         "instructions": "Servidor MCP headless para el TUI. Usa `vartui.session.action` para menos tokens y `view=tiny|none` para respuestas minimas."
                     }),
@@ -993,6 +994,7 @@ fn build_normal_snapshot(session_id: &str, app: &App) -> Value {
                         "u": clip_text(&form.base_url, 96),
                         "r": clip_text(&form.default_range, 48),
                         "th": clip_text(&form.theme, 40),
+                        "v": build_version(),
                         "t": mask_secret(&form.token)
                     })
                 })

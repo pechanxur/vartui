@@ -1,13 +1,14 @@
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    Frame,
 };
 
 use crate::application::app::{App, ConfigField};
 use crate::ui::helpers::centered_rect;
-use crate::ui::theme::{THEME_CATALOG, palette_with_override, resolve_theme_name};
+use crate::ui::theme::{palette_with_override, resolve_theme_name, THEME_CATALOG};
+use crate::utils::version::build_version;
 
 pub fn render_config_modal(frame: &mut Frame, app: &mut App) {
     if app.config_form.is_none() {
@@ -19,9 +20,10 @@ pub fn render_config_modal(frame: &mut Frame, app: &mut App) {
 
     let preview_theme = app.config_form.as_ref().map(|form| form.theme.as_str());
     let palette = palette_with_override(&app.config, preview_theme);
+    let version = build_version();
 
     let block = Block::default()
-        .title("Configuracion Local")
+        .title(format!("Configuracion Local [{}]", version))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(palette.accent))
         .style(Style::default().bg(palette.bg).fg(palette.fg));
@@ -109,10 +111,12 @@ pub fn render_config_modal(frame: &mut Frame, app: &mut App) {
         let theme_preview = resolve_theme_name(&form.theme).slug();
         let theme_catalog = THEME_CATALOG.join(", ");
         let help_text = format!(
-            "Formatos de rango: AUTO | AUTO-WEEK | AUTO-MONTH | YYYY-MM-DD..YYYY-MM-DD\n\
+            "Version build: {}\n\
+             Formatos de rango: AUTO | AUTO-WEEK | AUTO-MONTH | YYYY-MM-DD..YYYY-MM-DD\n\
              Tema actual: {} (aplicado: {})\n\
              Catalogo: {}\n\
              Tab/Shift+Tab: campo | Up/Down: tema (cuando Tema esta activo) | Ctrl+U: limpiar | Ctrl+R: restablecer | Enter: guardar | Esc: cancelar{}",
+            version,
             form.theme,
             theme_preview,
             theme_catalog,

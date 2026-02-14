@@ -13,6 +13,16 @@ TUI de terminal para manejar registros de horario en el VAR, con CLI JSON y serv
 ## Quick start
 
 ```bash
+brew tap pechanxur/vartui
+brew install vartui
+vartui
+```
+
+Tambien puede instalarse en Windows con `winget` y en otras plataformas con sus gestores correspondientes.
+
+Si prefieres compilar desde codigo fuente:
+
+```bash
 cargo build --release
 ./target/release/vartui
 ```
@@ -128,7 +138,7 @@ Archivo: `~/.claude/claude_desktop_config.json`
 {
   "mcpServers": {
     "vartui": {
-      "command": "/Users/davidsanchez/Code/encorto/vartui/target/release/vartui",
+      "command": "vartui",
       "args": ["mcp"]
     }
   }
@@ -143,7 +153,7 @@ En `settings.json`:
 {
   "cline.mcpServers": {
     "vartui": {
-      "command": "/Users/davidsanchez/Code/encorto/vartui/target/release/vartui",
+      "command": "vartui",
       "args": ["mcp"]
     }
   }
