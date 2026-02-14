@@ -6,6 +6,8 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use toon::{Delimiter, EncodeOptions};
 
+use std::time::Duration;
+
 use crate::application::app::{App, AppFocus, ConfigField, FormField, InputMode};
 use crate::application::input::handle_key;
 use crate::utils::parsing::parse_date_range;
@@ -369,7 +371,7 @@ fn tool_session_create(args: &ArgsMap, state: &mut ServerState) -> Result<Value,
     let options = parse_response_options(args, SnapshotView::Tiny)?;
     let session_id = state.create_session();
     let app = state.get_session_mut(&session_id)?;
-    app.check_background_load();
+    app.wait_background_load(Duration::from_secs(10));
 
     let snapshot = build_snapshot(&session_id, app, &options);
     let content = json!({

@@ -3,6 +3,7 @@ use ratatui::widgets::ListState;
 use std::env;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::domain::config::AppConfig;
 use crate::domain::models::*;
@@ -464,6 +465,35 @@ impl App {
 
     pub fn input_backspace(&mut self) {
         self.input.pop();
+    }
+
+    pub fn wait_background_load(&mut self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+
+        if let Some(rx) = self.rx.take() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(remaining) {
+                Ok(result) => {
+                    self.set_days(result.days);
+                    self.status = result.status;
+                }
+                Err(_) => {}
+            }
+        }
+
+        if let Some(rx) = self.rx_projects.take() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(remaining) {
+                Ok(Ok(projects)) => {
+                    self.projects = projects;
+                    self.status = format!("proyectos cargados: {}", self.projects.len());
+                }
+                Ok(Err(e)) => {
+                    self.status = format!("error proyectos: {}", e);
+                }
+                Err(_) => {}
+            }
+        }
     }
 
     pub fn check_background_load(&mut self) {
